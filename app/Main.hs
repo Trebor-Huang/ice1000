@@ -7,7 +7,7 @@ import qualified Data.Map as Map
 program :: Core a
 program = Con $ Eff "input" [] $
     Con $ Eff "input" [] $
-    Con $ Eff "output" [Con $ Fun "and" [Var (Left 0), Var (Right (Left 0))]] $
+    Con $ Eff "output" [Con $ Fun "+" [Var (Left 0), Var (Right (Left 0))]] $
     Con $ Eff "abort" [] $
     Con $ Case Eager (Just $ Var $ Left 0) []
 

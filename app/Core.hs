@@ -16,7 +16,12 @@ import qualified Data.Map as Map
 type Name = String  -- Change later
 data Eagerness = Eager | Lazy deriving (Eq, Show, Ord, Enum)
 data Normal = WNF | WHNF | RF deriving (Eq, Show, Ord, Enum)
-data Linear = Duplicated | Linear | Unused deriving (Eq, Show, Ord, Enum)
+
+data Atomic = AInt Int | ABool Bool | AStr String deriving Eq
+instance Show Atomic where
+  show (AInt a) = show a
+  show (ABool a) = show a
+  show (AStr a) = show a
 
 -- | The core language
 data CoreF scope term
@@ -26,6 +31,8 @@ data CoreF scope term
     -- ^ Builtin Effects
   | Fun Name [term]
     -- ^ Builtin Functions
+  | Atom Atomic
+    -- ^ Basic datatypes
   | Case Eagerness (Maybe term) [(Name, scope)]
     -- ^ Case distinctions either on the currently focused continuation
     -- or on a term, @(Name, scope)@ gives a constructor label, and binds
@@ -53,8 +60,8 @@ class CoreEff m => CoreEnv m e | m -> e where
   push :: [Core (e, BVar)] -> m e
     -- ^ Pushes in values for some bound variables,
     -- returns a position token used to fetch back the values.
-  fetch :: (e, BVar) -> m (Core (e, BVar))
-  write :: (e, BVar) -> Core (e, BVar) -> m ()
+  fetch :: (e, BVar) -> m (Normal, Core (e, BVar))
+  write :: (e, BVar) -> Normal -> Core (e, BVar) -> m ()
   getConst :: Name -> m (Core BVar)
     -- Since we've done scope checking this is fine.
   evalFun :: Name -> [Core Void] -> m (Core Void)
@@ -62,9 +69,12 @@ class CoreEff m => CoreEnv m e | m -> e where
 eval :: CoreEnv m e => Eagerness -> Core (e, BVar) -> m (Core (e, BVar))
 eval b (Var m) = do
   -- For variables, we fetch the variable, evaluate and cache it.
-  expr <- fetch m
-  expr' <- eval b expr
-  write m expr'
+  (n, expr) <- fetch m
+  let n' = toEnum (fromEnum b)  -- !
+  expr' <- if n > n'
+    then eval b expr
+    else return expr
+  write m n' expr'
   return expr'
 eval Eager (Con (Cons c args)) = do
   args <- mapM (eval Eager) args
@@ -77,6 +87,7 @@ eval b (Con (Cut f args)) = do
 eval b (Con (Fun f args)) = do
   args' <- mapM (eval Eager) args
   rename undefined <$> evalFun f (map clearVar args')
+eval _ a@(Con (Atom _)) = return a
 eval b (Con (Eff eff args cont)) = do
   args' <- mapM (eval Eager) args
   handle eff (map clearVar args') cont (eval b)
@@ -103,7 +114,7 @@ eval b (Con (Prog pat con)) = do
 
 newtype Env a = Env {fromEnv ::
   ReaderT (Map.Map Name (Core BVar)) (
-  StateT (Int, Map.Map (Int, BVar) (Core (Int, BVar))) (
+  StateT (Int, Map.Map (Int, BVar) (Normal, Core (Int, BVar))) (
   ExceptT String
   IO)) a} deriving (Functor, Applicative, Monad, MonadFail)
 runEnv :: Map.Map Name (Core BVar) -> Env a -> IO (Either String a)
@@ -116,8 +127,8 @@ runEnv c
 instance CoreEff Env where
   handle "abort" [] cont return = return $ Con $ Cons "" []
   handle "input" [] cont return = do
-    result <- Env $ lift $ lift $ lift (readLn :: IO Bool)
-    return $ substitute [Con $ Cons (show result) []] cont
+    result <- Env $ lift $ lift $ lift (readLn :: IO Int)
+    return $ substitute [Con $ Atom (AInt result)] cont
   handle "output" [arg] cont return = do
     Env $ lift $ lift $ lift $ print arg
     return $ substitute [] cont
@@ -128,16 +139,16 @@ instance CoreEnv Env Int where
     (e, keys) <- Env (lift get)
     let e' = e + 1
     let keys' = keys `Map.union` Map.fromDistinctAscList
-          [((e', i), r) | (i,r) <- zip [0..] ts]
+          [((e', i), (RF, r)) | (i,r) <- zip [0..] ts]
     return e'
   fetch k = do
     (_, keys) <- Env (lift get)
     return (keys Map.! k)
-  write k t = do
+  write k n t = do
     (e, keys) <- Env (lift get)
-    Env $ lift $ put (e, Map.insert k t keys)
+    Env $ lift $ put (e, Map.insert k (n,t) keys)
   getConst c = do
     Env $ asks (Map.! c)
-  evalFun "and" [Con (Cons b []), Con (Cons b' [])] = do
-    return $ Con (Cons (show (read b && read b')) [])
+  evalFun "+" [Con (Atom (AInt m)), Con (Atom (AInt n))] = do
+    return $ Con (Atom (AInt (m+n)))
   evalFun f _ = fail $ "Unrecognized built in: " ++ f
