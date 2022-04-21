@@ -17,7 +17,7 @@ type Name = String  -- Change later
 data Eagerness = Eager | Lazy deriving (Eq, Show, Ord, Enum)
 data Normal = WNF | WHNF | RF deriving (Eq, Show, Ord, Enum)
 
-data Atomic = AInt Int | ABool Bool | AStr String deriving Eq
+data Atomic = AInt !Int | ABool !Bool | AStr !String deriving Eq
 instance Show Atomic where
   show (AInt a) = show a
   show (ABool a) = show a
@@ -25,19 +25,19 @@ instance Show Atomic where
 
 -- | The core language
 data CoreF scope term
-  = Cons Name [term] -- ^ Constructors
-  | Cut Name [term] -- ^ Functions, fully applied
-  | Eff Name [term] scope
+  = Cons !Name ![term] -- ^ Constructors
+  | Cut !Name ![term] -- ^ Functions, fully applied
+  | Eff !Name ![term] !scope
     -- ^ Builtin Effects
-  | Fun Name [term]
+  | Fun !Name ![term]
     -- ^ Builtin Functions
-  | Atom Atomic
+  | Atom !Atomic
     -- ^ Basic datatypes
-  | Case Eagerness (Maybe term) [(Name, scope)]
+  | Case !Eagerness !(Maybe term) ![(Name, scope)]
     -- ^ Case distinctions either on the currently focused continuation
     -- or on a term, @(Name, scope)@ gives a constructor label, and binds
     -- some pattern variables.
-  | Prog term term
+  | Prog !term !term
     -- ^ The former @term@ must be defined by patterns, and the latter defined
     -- by constructors.
   deriving (Show, Eq)

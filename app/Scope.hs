@@ -9,12 +9,12 @@ type BVar = Int
 type Scope term var = term (Either BVar var)
 
 data FS t a
-  = Var a
-  | Con (t (Scope (FS t) a) (FS t a))
+  = Var !a
+  | Con !(t (Scope (FS t) a) (FS t a))
 
 data Fuse t1 t2 scope term
-  = LeftF (t1 scope term)
-  | RightF (t2 scope term)
+  = LeftF !(t1 scope term)
+  | RightF !(t2 scope term)
   deriving (Eq, Show)
 
 substitute :: Monad term => [term a] -> Scope term a -> term a
