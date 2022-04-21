@@ -29,18 +29,20 @@ executable ice1000
     other-modules:
         Scope
         Core
+        Typecheck
 
     default-extensions:
         DeriveTraversable,
+        DeriveGeneric,
         GeneralizedNewtypeDeriving,
         PatternSynonyms,
-        LambdaCase
+        LambdaCase,
+        MultiParamTypeClasses
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:
         base ^>=4.14.3.0,
-        unification-fd,
         bifunctors,
         transformers,
         containers
