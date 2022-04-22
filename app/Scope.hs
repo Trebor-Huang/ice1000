@@ -1,11 +1,21 @@
 {-# LANGUAGE RankNTypes, QuantifiedConstraints, UndecidableInstances #-} -- Used for Show instances
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables #-}
-module Scope (BVar, Scope, FS(..), substitute, subst, rename, clearVar) where
+{-# LANGUAGE FlexibleInstances, AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables, TypeApplications #-}
+{-# LANGUAGE IncoherentInstances #-}
+module Scope where
 import Data.Bifunctor
 import Data.Bifoldable
 import Data.Bitraversable
 import Data.Bifunctor.TH (deriveBifunctor, deriveBifoldable, deriveBitraversable)
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.State
+import Data.Functor.Identity
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
+import Control.Monad.Trans.Class (lift)
+import Data.Maybe (isJust)
+import Control.Monad ((<=<))
 
 -- | Safe zipping
 (#?) :: [a] -> [b] -> Maybe [(a, b)]
@@ -60,6 +70,10 @@ subst = (=<<)
 rename :: Bifunctor t => (vars -> vars') -> FS t vars -> FS t vars'
 rename = fmap
 
+-- | Calculate the free variables
+freeVar :: (Bifoldable t, Ord vars) => FS t vars -> Set.Set vars
+freeVar = foldMap Set.singleton
+
 -- | Assert that there are no unsubstituted variables.
 clearVar :: Bifunctor t => FS t vars -> FS t void
 clearVar = rename (error "IMPOSSIBLE: Dangling free variables.")
@@ -92,6 +106,16 @@ clean = traverse $ \case
    Left _ -> Nothing
    Right b -> Just b
 
+class Inject p q where
+  inject :: p -> q
+  reject :: q -> Maybe p
+instance Inject p q => Inject p (Either r q) where
+  inject = Right . inject
+  reject = reject <=< either (const Nothing) Just
+instance Inject p p where
+  inject = id
+  reject = Just
+
 class Bitraversable t => Unifiable t where
   zipMatch :: t a b -> t c d -> Maybe (t (a,c) (b,d))
 
@@ -102,39 +126,60 @@ instance Unifiable t => Unifiable (Solidify t) where
     | otherwise = Nothing
   zipMatch _ _ = Nothing
 
-data UnifyError t var
-  = Conflict (FS t var) (FS t var)
-  | Occurs var (FS t var)
+data UnifyError
+  = Conflict
+  | Occurs
+    -- ^ Note that the occurs check should be implemented by @UnifyEnv@.
   | BoundLeak
+  -- deriving (Functor, Foldable, Traversable)
 
 class (Monad m, Unifiable t) => UnifyEnv m var t where
-  giveUp :: UnifyError t var -> m a
+  giveUp :: UnifyError -> m a
+  getVar' :: var -> m (Maybe (FS t var))
   getVar :: var -> m (FS t var)
+  getVar v = do
+    t <- getVar' v
+    case t of
+      Nothing -> return $ Var v
+      Just t -> return t
   setVar :: var -> FS t var -> m ()
 
-unify :: UnifyEnv m v t => (FS t v, FS t v) -> m ()
-unify (Var x, t) = setVar x t
-unify (t, Var x) = setVar x t
+unify :: forall v m w t. (UnifyEnv m v t, Inject v w)
+  => (FS t w, FS t w) -> m ()
+unify (Var v, t) = case (reject v, traverse reject t) of
+  (Just v, Just t) -> do
+    m <- getVar' v :: m (Maybe (FS t v))
+    case m of
+      Just t' -> unify @v (t', t)
+      Nothing -> setVar v t
+  _ -> giveUp @_ @v @t BoundLeak
+unify (t, Var x) = unify @v (Var x, t)  -- I am Lazy
 unify ~(Con s, Con t) = case zipMatch s t of
-  Nothing -> giveUp $ Conflict (Con s) (Con t)
+  Nothing -> giveUp @_ @v @t Conflict
   Just st -> do
-    bitraverse (unify . bimap solidify solidify) unify st
+    bitraverse (unify @v) (unify @v) st
     return ()
 
-instance UnifyEnv m var t => UnifyEnv m var (Solidify t) where
-  giveUp (Conflict s t) = case (clean (liquify s), clean (liquify t)) of
-    (Just s', Just t') -> giveUp $ Conflict s' t'
-    _ -> giveUp (BoundLeak :: UnifyError t var)
-  giveUp (Occurs v t) = case clean (liquify t) of
-    Nothing -> giveUp (BoundLeak :: UnifyError t var)
-    Just t -> giveUp (Occurs v t)
-  giveUp BoundLeak = giveUp (BoundLeak :: UnifyError t var)
+-- We now define a spartan unification environment
+newtype MapUnifyEnv t var a = MapUnifyEnv
+  {fromMapUnifyEnv ::
+  StateT
+    ( Set.Set var {- Free variables -}
+    , Map.Map var (FS t var) {- Solved variables -}) (
+  ExceptT UnifyError
+  Identity) a} deriving (Functor, Applicative, Monad)
 
-  getVar v = do
-    t <- getVar v :: m (FS t var)
-    return $ solidify $ fmap Right t
-
-  setVar v t = case clean (liquify t) of
-    Nothing -> giveUp (BoundLeak :: UnifyError t var)
-    Just t' -> setVar v t'
-
+instance (Unifiable t, Ord var) => UnifyEnv (MapUnifyEnv t var) var t where
+  giveUp e = MapUnifyEnv $ lift $ throwE e
+  getVar' v = MapUnifyEnv $ do
+    (_, m) <- get
+    return $ m Map.!? v
+  setVar v t = if v `Set.member` freeVar t then  -- Might be costly
+      giveUp @_ @var @t Occurs
+    else MapUnifyEnv $ do
+      (vs, m) <- get
+      let t' = subst (\v -> case m Map.!? v of
+            Nothing -> Var v
+            Just tm -> tm) t
+      put (Set.delete v vs,
+        subst (\w -> if v == w then t' else Var w) <$> m)
