@@ -16,6 +16,8 @@ import qualified Data.Set as Set
 import Control.Monad.Trans.Class (lift)
 import Data.Maybe (isJust)
 import Control.Monad ((<=<))
+import Data.Foldable (traverse_)
+import GHC.IO (unsafePerformIO)
 
 -- | Safe zipping
 (#?) :: [a] -> [b] -> Maybe [(a, b)]
@@ -111,7 +113,9 @@ class Inject p q where
   reject :: q -> Maybe p
 instance Inject p q => Inject p (Either r q) where
   inject = Right . inject
-  reject = reject <=< either (const Nothing) Just
+  reject = reject <=< \case
+    Left _ -> Nothing
+    Right q -> Just q
 instance Inject p p where
   inject = id
   reject = Just
@@ -131,7 +135,7 @@ data UnifyError
   | Occurs
     -- ^ Note that the occurs check should be implemented by @UnifyEnv@.
   | BoundLeak
-  -- deriving (Functor, Foldable, Traversable)
+  deriving (Show, Eq)
 
 class (Monad m, Unifiable t) => UnifyEnv m var t where
   giveUp :: UnifyError -> m a
@@ -144,15 +148,17 @@ class (Monad m, Unifiable t) => UnifyEnv m var t where
       Just t -> return t
   setVar :: var -> FS t var -> m ()
 
-unify :: forall v m w t. (UnifyEnv m v t, Inject v w)
+unify :: forall v m w t. (UnifyEnv m v t, Inject v w, Eq w, Eq v)
   => (FS t w, FS t w) -> m ()
-unify (Var v, t) = case (reject v, traverse reject t) of
-  (Just v, Just t) -> do
-    m <- getVar' v :: m (Maybe (FS t v))
-    case m of
-      Just t' -> unify @v (t', t)
-      Nothing -> setVar v t
-  _ -> giveUp @_ @v @t BoundLeak
+unify (Var v, t) = case t of
+  Var w | v == w -> return ()
+  _ -> case (reject v, traverse reject t) of
+    (Just v, Just t) -> do
+      m <- getVar' v :: m (Maybe (FS t v))
+      case m of
+        Just t' -> unify @v (t', t)
+        Nothing -> setVar v t
+    _ -> giveUp @_ @v @t BoundLeak
 unify (t, Var x) = unify @v (Var x, t)  -- I am Lazy
 unify ~(Con s, Con t) = case zipMatch s t of
   Nothing -> giveUp @_ @v @t Conflict
@@ -160,26 +166,41 @@ unify ~(Con s, Con t) = case zipMatch s t of
     bitraverse (unify @v) (unify @v) st
     return ()
 
+unifyEqs :: forall v m t. (UnifyEnv m v t, Eq v)
+  => [(FS t v, FS t v)] -> m ()
+unifyEqs = traverse_ (unify @v)
+
 -- We now define a spartan unification environment
 newtype MapUnifyEnv t var a = MapUnifyEnv
   {fromMapUnifyEnv ::
-  StateT
-    ( Set.Set var {- Free variables -}
-    , Map.Map var (FS t var) {- Solved variables -}) (
+  StateT (Map.Map var (FS t var) {- Solved variables -}) (
   ExceptT UnifyError
-  Identity) a} deriving (Functor, Applicative, Monad)
+  IO) a} deriving (Functor, Applicative, Monad)
+runMapUnifyEnv :: MapUnifyEnv t var a
+  -> Either UnifyError (Map.Map var (FS t var))
+runMapUnifyEnv
+  = unsafePerformIO
+  . runExceptT
+  . flip execStateT Map.empty
+  . fromMapUnifyEnv
 
-instance (Unifiable t, Ord var) => UnifyEnv (MapUnifyEnv t var) var t where
+instance (Unifiable t, Ord var, Show var, forall p q. (Show p, Show q) => Show (t p q))
+  => UnifyEnv (MapUnifyEnv t var) var t where
   giveUp e = MapUnifyEnv $ lift $ throwE e
   getVar' v = MapUnifyEnv $ do
-    (_, m) <- get
+    lift $ lift $ putStrLn $ "getVar' " ++ show v
+    m <- get
     return $ m Map.!? v
-  setVar v t = if v `Set.member` freeVar t then  -- Might be costly
-      giveUp @_ @var @t Occurs
-    else MapUnifyEnv $ do
-      (vs, m) <- get
+  setVar v t = MapUnifyEnv $ do
+      lift $ lift $ putStrLn $ "Setting " ++ show v ++ " to " ++ show t
+      m <- get
       let t' = subst (\v -> case m Map.!? v of
             Nothing -> Var v
             Just tm -> tm) t
-      put (Set.delete v vs,
-        subst (\w -> if v == w then t' else Var w) <$> m)
+      if case t' of {Var v' -> v==v'; _ -> False} then
+        return ()
+      else if v `Set.member` freeVar t' then
+        lift $ throwE Occurs
+      else
+        put $ subst (\w -> if v == w then t' else Var w) <$>
+          Map.insert v t' m
