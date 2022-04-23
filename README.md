@@ -12,7 +12,7 @@ A small programming language based on polarization.
 ![I wonder how, I wonder why](img/Suppression2.png)
 
 Since we need to process many kinds of syntax trees with binding, `ice1000`
-uses a free-monad style syntax specification as discribed in the haskell
+uses a free-monad style syntax specification as described in the haskell
 [`unification-fd`](https://hackage.haskell.org/package/unification-fd)
 package and a binding aware version
 [here](http://arxiv.org/abs/2204.05653v1). For example, if we would like to
