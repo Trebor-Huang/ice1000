@@ -24,7 +24,7 @@ instance Show Atomic where
   show (AStr a) = show a
 
 -- | The core language
-data CoreF scope term
+data Ice10F scope term
   = Cons !Name ![term] -- ^ Constructors
   | Cut !Name ![term] -- ^ Functions, fully applied
   | Eff !Name ![term] !scope
@@ -41,32 +41,32 @@ data CoreF scope term
     -- ^ The former @term@ must be defined by patterns, and the latter defined
     -- by constructors.
   deriving (Show, Eq)
-$(deriveBifunctor ''CoreF)
-$(deriveBifoldable ''CoreF)
-$(deriveBitraversable ''CoreF)
+$(deriveBifunctor ''Ice10F)
+$(deriveBifoldable ''Ice10F)
+$(deriveBitraversable ''Ice10F)
 
-type Core = FS CoreF
+type Ice10 = FS Ice10F
 
 -- We now define the operational semantics for the core language.
-class MonadFail m => CoreEff m where
+class MonadFail m => Ice10Eff m where
   handle
     :: Name  -- ^ Effect name
-    -> [Core Void]  -- ^ Arguments
-    -> Scope Core v  -- ^ Continuation Term
-    -> (Core v -> m (Core v))  -- ^ Inverted control
-    -> m (Core v)
+    -> [Ice10 Void]  -- ^ Arguments
+    -> Scope Ice10 v  -- ^ Continuation Term
+    -> (Ice10 v -> m (Ice10 v))  -- ^ Inverted control
+    -> m (Ice10 v)
 
-class CoreEff m => CoreEnv m e | m -> e where
-  push :: [Core (e, BVar)] -> m e
+class Ice10Eff m => Ice10Env m e | m -> e where
+  push :: [Ice10 (e, BVar)] -> m e
     -- ^ Pushes in values for some bound variables,
     -- returns a position token used to fetch back the values.
-  fetch :: (e, BVar) -> m (Normal, Core (e, BVar))
-  write :: (e, BVar) -> Normal -> Core (e, BVar) -> m ()
-  getConst :: Name -> m (Core BVar)
+  fetch :: (e, BVar) -> m (Normal, Ice10 (e, BVar))
+  write :: (e, BVar) -> Normal -> Ice10 (e, BVar) -> m ()
+  getConst :: Name -> m (Ice10 BVar)
     -- Since we've done scope checking this is fine.
-  evalFun :: Name -> [Core Void] -> m (Core Void)
+  evalFun :: Name -> [Ice10 Void] -> m (Ice10 Void)
 
-eval :: CoreEnv m e => Eagerness -> Core (e, BVar) -> m (Core (e, BVar))
+eval :: Ice10Env m e => Eagerness -> Ice10 (e, BVar) -> m (Ice10 (e, BVar))
 eval b (Var m) = do
   -- For variables, we fetch the variable, evaluate and cache it.
   (n, expr) <- fetch m
@@ -104,7 +104,7 @@ eval b (Con (Prog pat con)) = do
   eval b (Con (Case b' (Just con) clauses))
 
 -- | Chase down all the unsubstituted variables, bad exercise.
--- complete :: CoreEnv m e => Core (e, BVar) -> m (Core Void)
+-- complete :: Ice10Env m e => Ice10 (e, BVar) -> m (Ice10 Void)
 -- complete (Var e) = complete =<< fetch e
 -- complete (Con t) = Con <$> bitraverse
 --     (fmap join . traverse
@@ -113,18 +113,18 @@ eval b (Con (Prog pat con)) = do
 --     complete t
 
 newtype Env a = Env {fromEnv ::
-  ReaderT (Map.Map Name (Core BVar)) (
-  StateT (Int, Map.Map (Int, BVar) (Normal, Core (Int, BVar))) (
+  ReaderT (Map.Map Name (Ice10 BVar)) (
+  StateT (Int, Map.Map (Int, BVar) (Normal, Ice10 (Int, BVar))) (
   ExceptT String
   IO)) a} deriving (Functor, Applicative, Monad, MonadFail)
-runEnv :: Map.Map Name (Core BVar) -> Env a -> IO (Either String a)
+runEnv :: Map.Map Name (Ice10 BVar) -> Env a -> IO (Either String a)
 runEnv c
   = runExceptT
   . flip evalStateT (0, Map.empty)
   . flip runReaderT c
   . fromEnv
 
-instance CoreEff Env where
+instance Ice10Eff Env where
   handle "abort" [] cont return = return $ Con $ Cons "" []
   handle "input" [] cont return = do
     result <- Env $ lift $ lift $ lift (readLn :: IO Int)
@@ -134,7 +134,7 @@ instance CoreEff Env where
     return $ substitute [] cont
   handle eff args cont return = fail $ "Unsupported effect: " ++ eff
 
-instance CoreEnv Env Int where
+instance Ice10Env Env Int where
   push ts = do
     (e, keys) <- Env (lift get)
     let e' = e + 1

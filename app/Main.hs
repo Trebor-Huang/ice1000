@@ -4,14 +4,14 @@ import Core
 import Data.Void (Void)
 import qualified Data.Map as Map
 
-program :: Core a
+program :: Ice10 a
 program = Con $ Eff "input" [] $
     Con $ Eff "input" [] $
     Con $ Eff "output" [Con $ Fun "+" [Var (Left 0), Var (Right (Left 0))]] $
     Con $ Eff "abort" [] $
     Con $ Case Eager (Just $ Var $ Left 0) []
 
-test :: IO (Either String (Core Void))
+test :: IO (Either String (Ice10 Void))
 test = runEnv Map.empty $ clearVar <$> eval Eager program
 
 main :: IO ()

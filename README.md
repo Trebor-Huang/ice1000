@@ -45,11 +45,18 @@ test = runMapUnifyEnv $ unifyEqs [(lhs, rhs)]
 Note that this performs unification with binding, but does not allow equations.
 So it is not higher order. For example, this is used to unify isorecursive types
 in type inference, where typical equations are like
-`µx. a -> Bool -> x  ~  µy. Int -> b -> y`, which should return the solution
+`(µx. a -> Bool -> x)  ~  (µy. Int -> b -> y)`, which should return the solution
 `a := Int` and `b := Bool`.
 
 # Type theory
 
-# Core Language
-
 # Compiling
+There are four stages:
+
+- `ice1000` is the full language. After parsing, we translate away some small
+  syntactic sugars; do scope checking and remove all the module stuff.
+- `ice100` is what's left. We then do type checking, and translate pattern matching
+  into case trees. <!-- Lambda floating? Stuff like that --->
+- `ice10` is what's left. This does not have type information now. And we proceed
+  to do more optimizations, and compile to bytecode or something
+- `ice1` is the bytecode. Now we may run it in a VM or compile to binary.

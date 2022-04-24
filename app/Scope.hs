@@ -175,24 +175,22 @@ newtype MapUnifyEnv t var a = MapUnifyEnv
   {fromMapUnifyEnv ::
   StateT (Map.Map var (FS t var) {- Solved variables -}) (
   ExceptT UnifyError
-  IO) a} deriving (Functor, Applicative, Monad)
+  Identity) a} deriving (Functor, Applicative, Monad)
 runMapUnifyEnv :: MapUnifyEnv t var a
   -> Either UnifyError (Map.Map var (FS t var))
 runMapUnifyEnv
-  = unsafePerformIO
+  = runIdentity
   . runExceptT
   . flip execStateT Map.empty
   . fromMapUnifyEnv
 
-instance (Unifiable t, Ord var, Show var, forall p q. (Show p, Show q) => Show (t p q))
+instance (Unifiable t, Ord var)
   => UnifyEnv (MapUnifyEnv t var) var t where
   giveUp e = MapUnifyEnv $ lift $ throwE e
   getVar' v = MapUnifyEnv $ do
-    lift $ lift $ putStrLn $ "getVar' " ++ show v
     m <- get
     return $ m Map.!? v
   setVar v t = MapUnifyEnv $ do
-      lift $ lift $ putStrLn $ "Setting " ++ show v ++ " to " ++ show t
       m <- get
       let t' = subst (\v -> case m Map.!? v of
             Nothing -> Var v
