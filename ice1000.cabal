@@ -32,6 +32,7 @@ executable ice1000
         Typecheck
 
     default-extensions:
+        TemplateHaskell,
         DeriveTraversable,
         DeriveGeneric,
         GeneralizedNewtypeDeriving,

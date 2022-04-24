@@ -1,5 +1,4 @@
 {-# LANGUAGE RankNTypes, QuantifiedConstraints, UndecidableInstances #-} -- Used for Show instances
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleInstances, AllowAmbiguousTypes #-}
 {-# LANGUAGE ScopedTypeVariables, TypeApplications #-}
 {-# LANGUAGE IncoherentInstances #-}
@@ -25,6 +24,8 @@ import GHC.IO (unsafePerformIO)
 (x:xs) #? (y:ys) = ((x,y):) <$> xs #? ys
 _ #? _ = Nothing
 
+-- | Hierarchical variables.
+data HVar = HVRoot !String | !HVar :-: !String deriving (Show, Eq)
 type BVar = Int
 type Scope term var = term (Either BVar var)
 
@@ -41,6 +42,12 @@ instance (Show a, forall p q. (Show p, Show q) => Show (t p q))
   => Show (FS t a) where
   show (Var a) = show a
   show (Con t) = show t
+
+instance (Eq a, forall p q. (Eq p, Eq q) => Eq (t p q))
+  => Eq (FS t a) where
+  (Var x) == (Var y) = x == y
+  (Con t) == (Con s) = t == s
+  _ == _ = False
 
 instance Bifunctor t => Functor (FS t) where
   fmap f (Var a) = Var (f a)
@@ -135,6 +142,7 @@ data UnifyError
   | Occurs
     -- ^ Note that the occurs check should be implemented by @UnifyEnv@.
   | BoundLeak
+  | NotSpecializing
   deriving (Show, Eq)
 
 class (Monad m, Unifiable t) => UnifyEnv m var t where
@@ -149,26 +157,29 @@ class (Monad m, Unifiable t) => UnifyEnv m var t where
   setVar :: var -> FS t var -> m ()
 
 unify :: forall v m w t. (UnifyEnv m v t, Inject v w, Eq w, Eq v)
-  => (FS t w, FS t w) -> m ()
-unify (Var v, t) = case t of
+  => Bool -> (FS t w, FS t w) -> m ()
+unify b (Var v, t) = case t of
   Var w | v == w -> return ()
   _ -> case (reject v, traverse reject t) of
     (Just v, Just t) -> do
       m <- getVar' v :: m (Maybe (FS t v))
       case m of
-        Just t' -> unify @v (t', t)
+        Just t' -> unify @v b (t', t)
         Nothing -> setVar v t
     _ -> giveUp @_ @v @t BoundLeak
-unify (t, Var x) = unify @v (Var x, t)  -- I am Lazy
-unify ~(Con s, Con t) = case zipMatch s t of
+unify True (t, Var x) = unify @v True (Var x, t)  -- I am Lazy
+unify False (t, Var x) = giveUp @_ @v @t NotSpecializing
+unify b ~(Con s, Con t) = case zipMatch s t of
   Nothing -> giveUp @_ @v @t Conflict
   Just st -> do
-    bitraverse (unify @v) (unify @v) st
+    bitraverse (unify @v b) (unify @v b) st
     return ()
 
+-- | Unifies equations. @Bool@ argument signifies whether it is symmetric (True)
+-- or testing for specialization (False).
 unifyEqs :: forall v m t. (UnifyEnv m v t, Eq v)
-  => [(FS t v, FS t v)] -> m ()
-unifyEqs = traverse_ (unify @v)
+  => Bool -> [(FS t v, FS t v)] -> m ()
+unifyEqs b = traverse_ (unify @v b)
 
 -- We now define a spartan unification environment
 newtype MapUnifyEnv t var a = MapUnifyEnv
