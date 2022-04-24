@@ -33,10 +33,10 @@ data Ice10F scope term
     -- ^ Builtin Functions
   | Atom !Atomic
     -- ^ Basic datatypes
-  | Case !Eagerness !(Maybe term) ![(Name, scope)]
+  | Case !Eagerness !(Maybe term) ![(Name, scope)] !(Maybe scope)
     -- ^ Case distinctions either on the currently focused continuation
     -- or on a term, @(Name, scope)@ gives a constructor label, and binds
-    -- some pattern variables.
+    -- some pattern variables. The last @Maybe scope@ is for fallthrough cases.
   | Prog !term !term
     -- ^ The former @term@ must be defined by patterns, and the latter defined
     -- by constructors.
@@ -91,17 +91,21 @@ eval _ a@(Con (Atom _)) = return a
 eval b (Con (Eff eff args cont)) = do
   args' <- mapM (eval Eager) args
   handle eff (map clearVar args') cont (eval b)
-eval b c@(Con (Case b' Nothing _)) = return c
-eval b (Con (Case b' (Just t) clauses)) = do
-  ~(Con (Cons c args)) <- eval b' t
+eval b c@(Con (Case b' Nothing _ _)) = return c
+eval b (Con (Case b' (Just t) clauses catchall)) = do
+  ~arg@(Con (Cons c args)) <- eval b' t
   case lookup c clauses of
-    Nothing -> fail "Pattern matching not exhaustive."
+    Nothing -> case catchall of
+      Nothing -> fail "Pattern matching non-exhaustive."
+      Just clause -> do
+        e <- push [arg]
+        eval b (rename (either (e,) id) clause)
     Just clause -> do
       e <- push args
       eval b (rename (either (e,) id) clause)
 eval b (Con (Prog pat con)) = do
-  ~(Con (Case b' Nothing clauses)) <- eval Lazy pat
-  eval b (Con (Case b' (Just con) clauses))
+  ~(Con (Case b' Nothing clauses catchall)) <- eval Lazy pat
+  eval b (Con (Case b' (Just con) clauses catchall))
 
 -- | Chase down all the unsubstituted variables, bad exercise.
 -- complete :: Ice10Env m e => Ice10 (e, BVar) -> m (Ice10 Void)
