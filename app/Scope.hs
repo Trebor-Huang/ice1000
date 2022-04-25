@@ -25,7 +25,7 @@ import GHC.IO (unsafePerformIO)
 _ #? _ = Nothing
 
 -- | Hierarchical variables.
-data HVar = HVRoot !String | !HVar :-: !String deriving (Show, Eq)
+data HVar = HVRoot !String | !HVar :-: !(String, Int) deriving (Show, Eq)
 type BVar = Int
 type Scope term var = term (Either BVar var)
 
@@ -155,6 +155,7 @@ class (Monad m, Unifiable t) => UnifyEnv m var t where
       Nothing -> return $ Var v
       Just t -> return t
   setVar :: var -> FS t var -> m ()
+  export :: FS t var -> m (FS t var)
 
 unify :: forall v m w t. (UnifyEnv m v t, Inject v w, Eq w, Eq v)
   => Bool -> (FS t w, FS t w) -> m ()
@@ -213,3 +214,8 @@ instance (Unifiable t, Ord var)
       else
         put $ subst (\w -> if v == w then t' else Var w) <$>
           Map.insert v t' m
+  export t = MapUnifyEnv $ do
+    m <- get
+    return $ subst (\v -> case m Map.!? v of
+      Nothing -> Var v
+      Just tm -> tm) t
