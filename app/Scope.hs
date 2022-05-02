@@ -25,7 +25,7 @@ import GHC.IO (unsafePerformIO)
 _ #? _ = Nothing
 
 -- | Hierarchical variables.
-data HVar = HVRoot !String | !HVar :-: !(String, Int) deriving (Show, Eq)
+data HVar = HVRoot !String | !HVar :-: !(String, Int) deriving (Show, Eq, Ord)
 type BVar = Int
 type Scope term var = term (Either BVar var)
 
