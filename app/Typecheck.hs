@@ -9,15 +9,8 @@ import Data.Bifunctor.TH (deriveBifunctor, deriveBifoldable, deriveBitraversable
 -- translating deep pattern matching to shallow casejumps
 -- the order of @Prog@ be switched appropriately ?? (Bonus)
 
-data Status
-  = EagerPositive
-  | EagerNegative
-  | LazyPositive
-  | LazyNegative
-  deriving (Eq, Show, Enum, Bounded)
-
 data TypeF scope term
-  = TCon !Status !Name ![term]  -- Currently just this.
+  = TCon !Name ![term]  -- Currently just this.
   deriving (Eq, Show)
 $(deriveBifunctor ''TypeF)
 $(deriveBifoldable ''TypeF)
@@ -26,8 +19,8 @@ type Type = FS TypeF
 
 data FullType var
   = FTProgram
-  | FTType (Type var)
-  | FTHole (Type var)
+  | FTByConstructor (Type var)
+  | FTByPattern (Type var)
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 -- There is a major deficiency of the unification procedure:
@@ -36,9 +29,9 @@ data FullType var
 
 data UTypeF scope term
   = UProgram
-  | UHole !term
-  | UType !term
-  | UCon !Status !Name ![term]
+  | UByPattern !term
+  | UByConstructor !term
+  | UCon !Name ![term]
   deriving (Eq, Show)
 $(deriveBifunctor ''UTypeF)
 $(deriveBifoldable ''UTypeF)
@@ -47,24 +40,24 @@ type UType = FS UTypeF
 
 embedT :: Type var -> UType var
 embedT (Var var) = Var var
-embedT (Con (TCon status s tms))
-  = Con$UCon status
+embedT (Con (TCon s tms))
+  = Con$UCon
       s (map embedT tms)
 
 embedFT :: FullType var -> UType var
 embedFT FTProgram = Con UProgram
-embedFT (FTType t) = embedT t
-embedFT (FTHole t) = Con$UHole $ embedT t
+embedFT (FTByConstructor t) = embedT t
+embedFT (FTByPattern t) = Con$UByPattern $ embedT t
 
 reifyT :: UType var -> Type var
 reifyT (Var var) = Var var
-reifyT (Con (UCon status s tms)) = Con$TCon status s (map reifyT tms)
+reifyT (Con (UCon s tms)) = Con$TCon s (map reifyT tms)
 reifyT (Con _) = error "Unexpected type"
 
 reifyUT :: UType var -> FullType var
 reifyUT (Con UProgram) = FTProgram
-reifyUT (Con (UHole t)) = FTHole $ reifyT t
-reifyUT (Con (UType t)) = FTType $ reifyT t
+reifyUT (Con (UByPattern t)) = FTByPattern $ reifyT t
+reifyUT (Con (UByConstructor t)) = FTByConstructor $ reifyT t
 reifyUT _ = error "Unexpected type"
 
 
@@ -111,28 +104,46 @@ $(deriveBitraversable ''Ice100F)
 
 type Ice100 info = FS (Ice100F info)
 
+instantiate :: HVar -> FullType Name -> UType HVar
+instantiate hv ty = rename ((hv :-:) . (,0)) (embedFT ty)
+
 -- Challenge: write a correct type signature.
 
-{-
 infer :: UnifyEnv m HVar UTypeF
-  => HVar -> Ice100 info HVar -> m (UType HVar)
-infer h (Var v) = return $ Var v
-infer h (Con (Call _ _ name args))
-  = _wn
+  => (Name -> [FullType Name])  -- ^ Constant types
+  -> HVar  -- ^ Current variable hierarchy
+  -> Ice100 info HVar -> m (UType HVar)
+infer env hv (Var v) = return (Var v)
+infer env hv (Con (Call _ _ name args)) = do
+  -- We've already done scope checking, so just do it.
+  let (targetTy : argTys) = map (instantiate hv) $ env name
+  argInfTys <- sequence [ infer env (hv :-: ("InferCallArgs", i)) a | (i,a) <- zip [0..] args ]
+  unifyEqs False $ zip argInfTys argTys
+  export targetTy
 
-infer h (Con (Eff _ name args cont)) = _wq
-infer h (Con (Case _ Nothing clauses)) = _wt
-infer h (Con (Case _ (Just tm) clauses)) = _wu
-infer h (Con (Prog _ tm1 tm2)) = do
-  ty1 <- infer (h :-: ("InferProgLeft",0)) tm1
-  ty2 <- infer (h :-: ("InferProgRight",0)) tm2
-  -- unifyEqs True []
-  _
+infer env hv (Con (Eff _ name args cont)) = do
+  let (targetTy : argTys) = map (instantiate hv) $ env name
+  argInfTys <- sequence [ infer env (hv :-: ("InferEffArgs", i)) a | (i,a) <- zip [0..] args ]
+  unifyEqs False $ zip argInfTys argTys
+  return $ Con UProgram
 
-infer h (Con (Annotation _ tm ty)) = do
-  ty' <- infer (h :-: ("InferAnnotation",0)) tm
-  unifyEqs False [(ty', rename ((h :-:) . (,0)) (embedFT ty))]
+infer env hv (Con (Case _ Nothing clauses)) = _
+
+infer env hv (Con (Prog _ tm1 tm2)) = do
+  ty1 <- infer env (hv :-: ("InferProgLeft",0)) tm1
+  ty2 <- infer env (hv :-: ("InferProgRight",0)) tm2
+  unifyEqs True [(ty1, Con$UByPattern (Var hv)), (ty2, Con$UByConstructor (Var hv))]
+  return $ Con UProgram
+
+-- I'm lazy
+infer env hv (Con (Case i (Just tm) clauses))
+  = infer env hv (Con$Prog undefined (Con$Case undefined Nothing clauses) tm)
+
+infer env hv (Con (Annotation _ tm ty)) = do
+  ty' <- infer env (hv :-: ("InferAnnotation",0)) tm
+  unifyEqs False [(ty', instantiate hv ty)]
   export ty'
 
-infer h (Con (Atom _ t)) = _
--}
+infer env hv (Con (Atom _ (AInt _))) = return $ Con$UByConstructor $ Con$UCon "Int" []
+infer env hv (Con (Atom _ (ABool _))) = return $ Con$UByConstructor $ Con$UCon "Bool" []
+infer env hv (Con (Atom _ (AStr _))) = return $ Con$UByConstructor $ Con$UCon "Str" []
