@@ -12,9 +12,9 @@ import Data.Bifunctor.TH (deriveBifunctor, deriveBifoldable, deriveBitraversable
 data TypeF scope term
   = TCon !Name ![term]  -- Currently just this.
   deriving (Eq, Show)
-$(deriveBifunctor ''TypeF)
-$(deriveBifoldable ''TypeF)
-$(deriveBitraversable ''TypeF)
+deriveBifunctor ''TypeF
+deriveBifoldable ''TypeF
+deriveBitraversable ''TypeF
 type Type = FS TypeF
 
 data FullType var
@@ -163,7 +163,7 @@ infer env hv (Con (Case _ Nothing clauses)) = do
           Left b -> hv :-: ("ClauseBoundVar", b)
           Right hv -> hv) clause
       unifyEqs True [(ty, Con UProgram), (typat, Con$UByConstructor (Var hv))]
-      export $ Con$UByPattern (Var hv)
+      export $ Var hv
 
 infer env hv (Con (Prog _ tm1 tm2)) = do
   ty1 <- infer env (hv :-: ("InferProgLeft",0)) tm1

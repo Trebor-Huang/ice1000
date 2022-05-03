@@ -26,6 +26,7 @@ _ #? _ = Nothing
 
 -- | Hierarchical variables.
 data HVar = HVRoot !String | !HVar :-: !(String, Int) deriving (Show, Eq, Ord)
+infixl 9 :-:
 type BVar = Int
 type Scope term var = term (Either BVar var)
 

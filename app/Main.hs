@@ -15,19 +15,38 @@ program10 = Con $ Core.Eff "input" [] $
 test10 :: IO (Either String (Ice10 Void))
 test10 = runEnv Map.empty $ clearVar <$> eval Eager program10
 
-program100 :: Ice100 () a
-program100 = Con$Call () Function "add"
-    [ Con$Typecheck.Atom () (AInt 3)
-    , Con$Typecheck.Atom () (AInt 4)
+program100 :: Ice100 () HVar
+program100 = Con$Typecheck.Case () Nothing
+    [ (PCon "func" [PVar {- 0 : inA -}, PVar {- 1 : outC -}],
+        Con$Typecheck.Prog ()
+            (Var $ Right (HVRoot "f"))
+            (Con$Call () Constructor "func"
+                [ Var (Left 0)
+                , Con$Typecheck.Case () Nothing
+                    [ (PVar {- inB -}, Con$Typecheck.Prog ()
+                        (Var $ Right (Right (HVRoot "g")))
+                        (Con$Call () Constructor "func"
+                            [ Var (Left 0)
+                            , Var (Right (Left 1))
+                            ]))
+                    ]
+                ]))
     ]
 
-test100 :: Either UnifyError (Map.Map HVar (UType HVar))
-test100 = runMapUnifyEnv $ infer (\case
-    "add" -> [tyint, tyint, tyint]
-    _ -> error "Unknown name") (HVRoot "") program100
+env100 :: [Char] -> [FullType Name]
+env100 "add" = [tyint, tyint, tyint]
     where
         tyint :: FullType Name
         tyint = FTByConstructor (Con$TCon "Int" [])
+env100 "func" =  -- CoFunc a b
+    [ FTByConstructor (Con$TCon "CoFunc" [Var "a", Var "b"])
+    , FTByConstructor (Var "a")
+    , FTByPattern (Var "b")
+    ]
+env100 _ = error "Unknown name."
+
+test100 :: Either UnifyError (Map.Map HVar (UType HVar))
+test100 = runMapUnifyEnv $ infer env100 (HVRoot "") program100
 
 main :: IO ()
 main = print test100
