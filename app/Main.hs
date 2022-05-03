@@ -43,6 +43,18 @@ env100 "func" =  -- CoFunc a b
     , FTByConstructor (Var "a")
     , FTByPattern (Var "b")
     ]
+env100 "pair" =
+    [ FTByConstructor (Con$TCon "Pair" [Var "a", Var "b"])
+    , FTByConstructor (Var "a")
+    , FTByConstructor (Var "b")
+    ]
+env100 "copair" =  -- Yes, they look the same. We need to check polarity.
+    [ FTByConstructor (Con$TCon "CoPair" [Var "a", Var "b"])
+    , FTByConstructor (Var "a")
+    , FTByConstructor (Var "b")
+    ]
+env100 "unit" =
+    [ FTByConstructor (Con$TCon "Unit" []) ]
 env100 _ = error "Unknown name."
 
 test100 :: Either UnifyError (Map.Map HVar (UType HVar))
