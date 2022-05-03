@@ -55,7 +55,7 @@ embedT (Con (TCon s tms))
 
 embedFT :: FullType var -> UType var
 embedFT FTProgram = Con UProgram
-embedFT (FTByConstructor t) = embedT t
+embedFT (FTByConstructor t) = Con$UByConstructor $ embedT t
 embedFT (FTByPattern t) = Con$UByPattern $ embedT t
 
 reifyT :: UType var -> Type var
@@ -128,7 +128,7 @@ fromPattern p = snd $ helper 0 p
           (b'', vs) = aux b' ps in
       (b'', v:vs)
 
-infer :: UnifyEnv m HVar UTypeF
+infer :: (UnifyEnv m HVar UTypeF, HasIO m)
   => (Name -> [FullType Name])  -- ^ Constant types
   -> HVar  -- ^ Current variable hierarchy
   -> Ice100 info HVar -> m (UType HVar)
@@ -151,7 +151,7 @@ infer env hv (Con (Case _ Nothing clauses)) = do
   unifyEqs True $ map (Var hv,) tyclauses
   export $ Con$UByPattern $ Var hv
   where
-    inferClauses :: UnifyEnv m HVar UTypeF
+    inferClauses :: (UnifyEnv m HVar UTypeF, HasIO m)
       => (Int, (Pattern, Ice100 info (Either BVar HVar)))
       -> m (UType HVar)
     inferClauses (i, (pat, clause)) = do

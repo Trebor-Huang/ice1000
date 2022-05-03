@@ -50,7 +50,7 @@ in type inference, where typical equations are like
 
 # Type theory
 
-![Wisdom of life](img/Suppression3.png)
+![Sensored](img/Suppression4.jpg)
 
 # Compiling
 There are four stages:

@@ -157,6 +157,9 @@ class (Monad m, Unifiable t) => UnifyEnv m var t where
   setVar :: var -> FS t var -> m ()
   export :: FS t var -> m (FS t var)
 
+class (Monad m) => HasIO m where
+  io :: Show a => a -> m ()
+
 unify :: forall v m w t. (UnifyEnv m v t, Inject v w, Eq w, Eq v)
   => Bool -> (FS t w, FS t w) -> m ()
 unify b (Var v, t) = case t of
@@ -178,20 +181,20 @@ unify b ~(Con s, Con t) = case zipMatch s t of
 
 -- | Unifies equations. @Bool@ argument signifies whether it is symmetric (True)
 -- or testing for specialization (False).
-unifyEqs :: forall v m t. (UnifyEnv m v t, Eq v)
+unifyEqs :: forall v m t. (UnifyEnv m v t, Eq v, Show v, forall p q. (Show p, Show q) => Show (t p q), HasIO m)
   => Bool -> [(FS t v, FS t v)] -> m ()
-unifyEqs b = traverse_ (unify @v b)
+unifyEqs b eqs = io eqs >> traverse_ (unify @v b) eqs
 
 -- We now define a spartan unification environment
 newtype MapUnifyEnv t var a = MapUnifyEnv
   {fromMapUnifyEnv ::
   StateT (Map.Map var (FS t var) {- Solved variables -}) (
   ExceptT UnifyError
-  Identity) a} deriving (Functor, Applicative, Monad)
+  IO) a} deriving (Functor, Applicative, Monad)
 runMapUnifyEnv :: MapUnifyEnv t var a
   -> Either UnifyError (Map.Map var (FS t var))
 runMapUnifyEnv
-  = runIdentity
+  = unsafePerformIO
   . runExceptT
   . flip execStateT Map.empty
   . fromMapUnifyEnv
@@ -219,3 +222,6 @@ instance (Unifiable t, Ord var)
     return $ subst (\v -> case m Map.!? v of
       Nothing -> Var v
       Just tm -> tm) t
+
+instance HasIO (MapUnifyEnv t var) where
+  io = MapUnifyEnv . lift . lift . print
