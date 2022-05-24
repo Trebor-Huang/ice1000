@@ -2,7 +2,8 @@
 {-# LANGUAGE TupleSections #-}
 module Typecheck where
 import Scope
-import Core (Atomic(..), Name)
+import Core (Atomic(..), Name, Ice10, Eagerness (Lazy))
+import qualified Core (Ice10F(..))
 import Data.Bifunctor.TH (deriveBifunctor, deriveBifoldable, deriveBitraversable)
 
 -- Tasks: check and infer the types
@@ -33,9 +34,9 @@ data UTypeF scope term
   | UByConstructor !term
   | UCon !Name ![term]
   deriving (Eq, Show)
-$(deriveBifunctor ''UTypeF)
-$(deriveBifoldable ''UTypeF)
-$(deriveBitraversable ''UTypeF)
+deriveBifunctor ''UTypeF
+deriveBifoldable ''UTypeF
+deriveBitraversable ''UTypeF
 type UType = FS UTypeF
 
 instance Unifiable UTypeF where
@@ -96,31 +97,31 @@ data CallType
   | BuiltinFunction
   deriving (Eq, Show, Enum, Bounded)
 
-data Ice100F info scope term
-  = Call info !CallType !Name ![term]
+data Ice100F scope term
+  = Call !CallType !Name ![term]
     -- ^ These three have similar syntax and typechecking details.
-  | Case info !(Maybe term) ![(Pattern, scope)]
-  | Prog info !term !term
-  | Eff info !Name ![term] !scope
-  | Atom info !Atomic
-  | Annotation info term (FullType Name)
+  | Case !(Maybe term) ![(Pattern, scope)]
+  | Prog !term !term
+  | Eff !Name ![term] !scope
+  | Atom !Atomic
+  | Annotation term (FullType Name)
     -- ^ Type annotation
   deriving (Show, Eq)
-$(deriveBifunctor ''Ice100F)
-$(deriveBifoldable ''Ice100F)
-$(deriveBitraversable ''Ice100F)
+deriveBifunctor ''Ice100F
+deriveBifoldable ''Ice100F
+deriveBitraversable ''Ice100F
 
-type Ice100 info = FS (Ice100F info)
+type Ice100 = FS Ice100F
 
 instantiate :: HVar -> FullType Name -> UType HVar
 instantiate hv ty = rename ((hv :-:) . (,0)) (embedFT ty)
 
-fromPattern :: Pattern -> Ice100 () BVar
+fromPattern :: Pattern -> Ice100 BVar
 fromPattern p = snd $ helper 0 p
   where
     helper b PVar = (b+1, Var b)
     helper b (PCon n ps) = let (b', vs) = aux b ps in
-      (b', Con$Call () Constructor n vs)
+      (b', Con$Call Constructor n vs)
     
     aux b [] = (b, [])
     aux b (p:ps) =
@@ -131,28 +132,28 @@ fromPattern p = snd $ helper 0 p
 infer :: (UnifyEnv m HVar UTypeF, HasIO m)
   => (Name -> [FullType Name])  -- ^ Constant types
   -> HVar  -- ^ Current variable hierarchy
-  -> Ice100 info HVar -> m (UType HVar)
+  -> Ice100 HVar -> m (UType HVar)
 infer env hv (Var v) = return (Var v)
-infer env hv (Con (Call _ _ name args)) = do
+infer env hv (Con (Call _ name args)) = do
   -- We've already done scope checking, so just do it.
   let (targetTy : argTys) = map (instantiate hv) $ env name
   argInfTys <- sequence [ infer env (hv :-: ("InferCallArgs", i)) a | (i,a) <- zip [0..] args ]
   unifyEqs False $ zip argInfTys argTys
   export targetTy
 
-infer env hv (Con (Eff _ name args cont)) = do
+infer env hv (Con (Eff name args cont)) = do
   let (targetTy : argTys) = map (instantiate hv) $ env name
   argInfTys <- sequence [ infer env (hv :-: ("InferEffArgs", i)) a | (i,a) <- zip [0..] args ]
   unifyEqs False $ zip argInfTys argTys
   return $ Con UProgram
 
-infer env hv (Con (Case _ Nothing clauses)) = do
+infer env hv (Con (Case Nothing clauses)) = do
   tyclauses <- mapM inferClauses (zip [0..] clauses)
   unifyEqs True $ map (Var hv,) tyclauses
   export $ Con$UByPattern $ Var hv
   where
     inferClauses :: (UnifyEnv m HVar UTypeF, HasIO m)
-      => (Int, (Pattern, Ice100 info (Either BVar HVar)))
+      => (Int, (Pattern, Ice100 (Either BVar HVar)))
       -> m (UType HVar)
     inferClauses (i, (pat, clause)) = do
       typat <- infer env (hv :-: ("CheckPattern",0)) $
@@ -165,21 +166,37 @@ infer env hv (Con (Case _ Nothing clauses)) = do
       unifyEqs True [(ty, Con UProgram), (typat, Con$UByConstructor (Var hv))]
       export $ Var hv
 
-infer env hv (Con (Prog _ tm1 tm2)) = do
+infer env hv (Con (Prog tm1 tm2)) = do
   ty1 <- infer env (hv :-: ("InferProgLeft",0)) tm1
   ty2 <- infer env (hv :-: ("InferProgRight",0)) tm2
   unifyEqs True [(ty1, Con$UByPattern (Var hv)), (ty2, Con$UByConstructor (Var hv))]
   return $ Con UProgram
 
 -- I'm lazy
-infer env hv (Con (Case i (Just tm) clauses))
-  = infer env hv (Con$Prog undefined (Con$Case undefined Nothing clauses) tm)
+infer env hv (Con (Case (Just tm) clauses))
+  = infer env hv (Con$Prog (Con$Case Nothing clauses) tm)
 
-infer env hv (Con (Annotation _ tm ty)) = do
+infer env hv (Con (Annotation tm ty)) = do
   ty' <- infer env (hv :-: ("InferAnnotation",0)) tm
   unifyEqs False [(ty', instantiate hv ty)]
   export ty'
 
-infer env hv (Con (Atom _ (AInt _))) = return $ Con$UByConstructor $ Con$UCon "Int" []
-infer env hv (Con (Atom _ (ABool _))) = return $ Con$UByConstructor $ Con$UCon "Bool" []
-infer env hv (Con (Atom _ (AStr _))) = return $ Con$UByConstructor $ Con$UCon "Str" []
+infer env hv (Con (Atom (AInt _))) = return $ Con$UByConstructor $ Con$UCon "Int" []
+infer env hv (Con (Atom (ABool _))) = return $ Con$UByConstructor $ Con$UCon "Bool" []
+infer env hv (Con (Atom (AStr _))) = return $ Con$UByConstructor $ Con$UCon "Str" []
+
+-- Makes patterns into trees
+
+-- Can be improved with recursion schemes later
+translate :: Ice100 v -> Ice10 v
+translate (Var v) = Var v
+translate (Con (Call Constructor name args)) = Con$Core.Cons name $ map translate args
+translate (Con (Call Function name args)) = Con$Core.Fun name $ map translate args
+translate (Con (Call BuiltinFunction name args)) = Con$Core.Cut name $ map translate args
+translate (Con (Prog bypat bycon)) = Con$Core.Prog (translate bypat) (translate bycon)
+translate (Con (Eff name arg cont)) = Con$Core.Eff name (map translate arg) (translate cont)
+translate (Con (Atom at)) = Con$Core.Atom at
+translate (Con (Annotation fs _)) = translate fs
+
+translate (Con (Case Nothing clauses)) = Con$Core.Case Core.Lazy Nothing _ _
+translate (Con (Case (Just term) clauses)) = Con$Core.Case Core.Lazy (Just (translate term)) _ _

@@ -15,17 +15,17 @@ program10 = Con $ Core.Eff "input" [] $
 test10 :: IO (Either String (Ice10 Void))
 test10 = runEnv Map.empty $ clearVar <$> eval Eager program10
 
-program100 :: Ice100 () HVar
-program100 = Con$Typecheck.Case () Nothing
+program100 :: Ice100 HVar
+program100 = Con$Typecheck.Case Nothing
     [ (PCon "func" [PVar {- 0 : inA -}, PVar {- 1 : outC -}],
-        Con$Typecheck.Prog ()
+        Con$Typecheck.Prog
             (Var $ Right (HVRoot "f"))
-            (Con$Call () Constructor "func"
+            (Con$Call Constructor "func"
                 [ Var (Left 0)
-                , Con$Typecheck.Case () Nothing
-                    [ (PVar {- inB -}, Con$Typecheck.Prog ()
+                , Con$Typecheck.Case Nothing
+                    [ (PVar {- inB -}, Con$Typecheck.Prog
                         (Var $ Right (Right (HVRoot "g")))
-                        (Con$Call () Constructor "func"
+                        (Con$Call Constructor "func"
                             [ Var (Left 0)
                             , Var (Right (Left 1))
                             ]))
