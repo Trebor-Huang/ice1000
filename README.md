@@ -1,6 +1,5 @@
 # ice1000
-> A Elbereth Gilthoniel
-> 
+> A Elbereth Gilthoniel  
 > silivren penna míriel!
 
 A small programming language based on polarization.
@@ -11,42 +10,7 @@ A small programming language based on polarization.
 
 ![I wonder how, I wonder why](img/Suppression2.png)
 
-Since we need to process many kinds of syntax trees with binding, `ice1000`
-uses a free-monad style syntax specification as described in the haskell
-[`unification-fd`](https://hackage.haskell.org/package/unification-fd)
-package and a binding aware version
-[here](http://arxiv.org/abs/2204.05653v1). For example, if we would like to
-implement the syntax tree of the simply typed lambda calculus:
-
-```hs
-data TermF scope term
-  = AppF term term
-  | LamF scope
-  deriving (Eq, Show)
-$(deriveBifunctor ''TermF)
-$(deriveBifoldable ''TermF)
-$(deriveBitraversable ''TermF)
-type Type = FS TermF
-
-instance Unifiable TermF where
-  zipMatch (AppF s t) (AppF s' t') = Just (AppF (s, s') (t, t'))
-  zipMatch (LamF c) (LamF c') = Just (LamF (c, c'))
-  zipMatch _ _ = Nothing
-```
-
-And the `zipMatch` can easily be derived with template haskell. Now we can
-write unification out of the box:
-
-```hs
-test :: Either UnifyError (Map.Map Int (FS TypeF Int))
-test = runMapUnifyEnv $ unifyEqs [(lhs, rhs)]
-```
-
-Note that this performs unification with binding, but does not allow equations.
-So it is not higher order. For example, this is used to unify isorecursive types
-in type inference, where typical equations are like
-`(µx. a -> Bool -> x)  ~  (µy. Int -> b -> y)`, which should return the solution
-`a := Int` and `b := Bool`.
+(...)
 
 # Sample Program
 
@@ -56,7 +20,7 @@ Pseudocode on what programs should look like.
 
 ```
 -- Ordinary routines, Builtin functions
-radius( a : Float , b : Float) : Float
+radius( a : Float , b : Float ) : Float
   = sqrt( mulf(a,a) , mulf(b,b) )  -- No fancy infix but it's easy to add
 
 -- Case
@@ -68,21 +32,21 @@ andb( a : Bool , b : Bool ) : Bool
   }
 
 -- Hindley Milnor Polymorphism
-k( x : +a , y : +b ) : +a = x
+k( x : a , y : b ) : a = x
 
 -- Case distinction with zero cases
-falso( x : Void ) : +a
+falso( x : Void ) : a
   = \case x {}
 ```
 
 ## Values and continuations
 
 ```
-add_with_cont( x : Int , y : Int , c : ~ Int) : #  -- Note the type!
+add_with_cont( x : Int , y : Int , c :~ Int ) : #  -- Note the type!
   = c # add(x , y)  -- Combining a value with a continuation creates a #.
 
 -- To create a continuation, do a pattern matching
-example() : ~ Int
+example() :~ Int
   = \continue {
     1 => blabla  -- Return a # here
     2 => blabla
@@ -94,7 +58,7 @@ example() : ~ Int
 
 ```
 -- I/O
-hw(cont : ~ String) : #
+hw(cont :~ String) : #
   = [] <- print("Your name, please: ")
   ; [name] <- input()
   ; [] <- print(concat("Hello, ", name))
@@ -115,19 +79,19 @@ exit() : #
 
 ## Data structures
 
-Todo
+(...) We can have the eager/lazy distinction, but I'm too lazy
 
 # Type theory
 
 ![Censored](img/Suppression4.jpg)
 
 The type theory consists of judgements of the form
-```
-T1 , T2 , ... ; S1 , S2 , ... |- t : J
-```
+
+$$T_1, \dots, T_n; S_1, \dots, S_n \vdash J$$
+
 where `J` is either `Program` or `By constructor T` or `By pattern S`.
 
-Todo
+A program (`#` in concrete syntax) is the result of combining a by-pattern term with a by-constructor term. It can also be created by primitive effects. (...)
 
 # Compiling
 There are four stages:
@@ -135,7 +99,7 @@ There are four stages:
 - `ice1000` is the full language. After parsing, we translate away some small
   syntactic sugars; do scope checking and remove all the module stuff.
 - `ice100` is what's left. We then do type checking, and translate pattern matching
-  into case trees. <!-- Lambda floating? Stuff like that --->
+  into case trees.
 - `ice10` is what's left. This does not have type information now. And we proceed
   to do more optimizations, and compile to bytecode or something
 - `ice1` is the bytecode. Now we may run it in a VM or compile to binary.
