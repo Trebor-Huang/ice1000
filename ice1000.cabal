@@ -27,9 +27,10 @@ executable ice1000
 
     -- Modules included in this executable, other than Main.
     other-modules:
-        Scope
-        Core
+        Utils
+        Parser
         Typecheck
+        Core
 
     default-extensions:
         TemplateHaskell,
