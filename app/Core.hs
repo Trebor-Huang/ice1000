@@ -4,11 +4,11 @@ import Utils
 -- | The core language
 data Ice10
   = Con !Name ![Ice10] -- ^ Constructors
-  | Cut !Name ![Ice10] -- ^ Functions, fully applied
+  | Cut !Name ![Ice10]
+    -- ^ Functions, fully applied.
+    -- Defined functions / Builtin functions.
   | Eff !Name ![Ice10] !(Scoped Ice10)
     -- ^ Builtin Effects
-  | Fun !Name ![Ice10]
-    -- ^ Builtin Functions
   | Atom !Atomic
     -- ^ Basic datatypes
   | Case !(Maybe Ice10) ![(Name, Scoped Ice10)] !(Maybe (Scoped Ice10))

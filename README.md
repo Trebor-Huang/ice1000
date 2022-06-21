@@ -26,10 +26,10 @@ radius( a : Float , b : Float ) : Float
 
 -- Case
 andb( a : Bool , b : Bool ) : Bool
-  = \case Pair(a, b) {  -- keywords are prefixed with a backslash
-    Pair(True() , True()) => True()
+  = \case a, b {  -- keywords are prefixed with a backslash
+    True() , True() => True()
       -- Nullary constructors, to keep the parser simple
-    _ => False()
+    _ , _ => False()
   }
 
 -- Hindley Milnor Polymorphism
