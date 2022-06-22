@@ -43,7 +43,7 @@ falso( x : Void ) : a
 ## Values and continuations
 
 ```
-add_with_cont( x : Int , y : Int , c :~ Int ) : #  -- Note the type!
+add_with_cont( x : Int , y : Int , c :~ Int ) :#  -- Note the type!
   = c # add(x , y)  -- Combining a value with a continuation creates a #.
 
 -- To create a continuation, do a pattern matching
@@ -59,7 +59,7 @@ example() :~ Int
 
 ```
 -- I/O
-hw(cont :~ String) : #
+hw(cont :~ String) :#
   = [] <- print("Your name, please: ")
   ; [name] <- input()
   ; [] <- print(concat("Hello, ", name))
@@ -87,13 +87,13 @@ opposite things. So the explanation might get a little bit confusing.
 Ordinary datatypes are straightforward:
 
 ```
--- A list of numbers (for simplicity, no polymorphism for now)
-\data List { Nil() | Cons(head : Float, tail : List) }
+-- A list (note the polymorphism)
+\data List<t> { Nil() | Cons(head : t, tail : List) }
 -- You can still give names to these fields (Maybe I can automatically
 -- generate projections? But I'm lazy), you can also choose to use
 -- the _ wildcard.
 
-append(a : List, b : List) : List
+append(a : List<t>, b : List<t>) : List<t>
   = \case a {
     Nil() => b
     Cons(x, xs) => Cons(x, append(xs, b))
@@ -103,7 +103,7 @@ append(a : List, b : List) : List
 The twist comes where you can also use the `:~` mechanism in datatypes:
 
 ```
-\data Hole { Hole(_ :~ Float) }
+\data Hole<a> { Hole(_ :~ a) }
 ```
 
 (...)

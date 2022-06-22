@@ -3,7 +3,8 @@ import Utils
 
 -- | The core language
 data Ice10
-  = Con !Name ![Ice10] -- ^ Constructors
+  = Var !Name
+  | Con !Name ![Ice10] -- ^ Constructors
   | Cut !Name ![Ice10]
     -- ^ Functions, fully applied.
     -- Defined functions / Builtin functions.
