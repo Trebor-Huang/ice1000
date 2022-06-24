@@ -26,26 +26,59 @@ executable ice1000
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:
-        Utils
-        Parser
-        Typecheck
-        Core
+    other-modules: Utils
+                 , Parser
+                 , Typecheck
+                 , Core
+                 , UTLC
 
-    default-extensions:
-        TemplateHaskell,
-        DeriveTraversable,
-        DeriveGeneric,
-        GeneralizedNewtypeDeriving,
-        PatternSynonyms,
-        LambdaCase,
-        MultiParamTypeClasses
+    default-extensions: ApplicativeDo
+                      , ConstraintKinds
+                      , DataKinds
+                      , DefaultSignatures
+                      , DeriveFoldable
+                      , DeriveFunctor
+                      , DeriveGeneric
+                      , DeriveLift
+                      , DeriveTraversable
+                      , DerivingStrategies
+                      , DuplicateRecordFields
+                      , EmptyCase
+                      , ExistentialQuantification
+                      , FlexibleContexts
+                      , FlexibleInstances
+                      , FunctionalDependencies
+                      , GADTs
+                      , GeneralizedNewtypeDeriving
+                      , InstanceSigs
+                      , KindSignatures
+                      , LambdaCase
+                      , MonadComprehensions
+                      , MultiParamTypeClasses
+                      , MultiWayIf
+                      , NamedFieldPuns
+                      , OverloadedLabels
+                      , OverloadedStrings
+                      , PackageImports
+                      , PartialTypeSignatures
+                      , PatternSynonyms
+                      , QuasiQuotes
+                      , RankNTypes
+                      , RecordWildCards
+                      , ScopedTypeVariables
+                      , StandaloneDeriving
+                      , TemplateHaskell
+                      , TupleSections
+                      , TypeApplications
+                      , TypeFamilies
+                      , TypeFamilyDependencies
+                      , TypeOperators
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:
-        base ^>=4.14.3.0,
-        bifunctors,
-        transformers
+    build-depends: base ^>=4.14.3.0
+                 , bifunctors
+                 , transformers
+                 , text
     hs-source-dirs:   app
     default-language: Haskell2010

@@ -1,4 +1,5 @@
 # ice1000
+
 > A Elbereth Gilthoniel  
 > silivren penna míriel!
 
@@ -32,7 +33,7 @@ andb( a : Bool , b : Bool ) : Bool
     _ , _ => False()
   }
 
--- Hindley Milnor Polymorphism
+-- Hindley Milner Polymorphism
 k( x : a , y : b ) : a = x
 
 -- Case distinction with zero cases
