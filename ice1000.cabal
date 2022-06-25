@@ -73,6 +73,15 @@ executable ice1000
                       , TypeFamilies
                       , TypeFamilyDependencies
                       , TypeOperators
+    
+    ghc-options:  -Wall
+                  -Wcompat
+                  -Wincomplete-record-updates
+                  -Wredundant-constraints
+                  -Wno-unused-do-bind
+                  -Wno-orphans
+                  -Wno-name-shadowing
+                  -Wno-partial-type-signatures
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
