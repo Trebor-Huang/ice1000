@@ -11,10 +11,12 @@ import qualified Data.Text.IO      as T
 
 type Ctor = Text
 
+-- | Tagging a type.
 type a :@ b = a
 
-data Strategy = Eager | Lazy
+data Strategy = Eager | Lazy deriving (Show, Eq, Ord)
 
+-- | Eliminator of 'Strategy'.
 strategy :: a -> a -> Strategy -> a
 strategy eager _lazy Eager = eager
 strategy _eager lazy Lazy  = lazy
@@ -38,6 +40,7 @@ instance Show UTLC where
   show (UCon ctor us) = "(" ++ unwords (T.unpack ctor : fmap show us) ++ ")"
   show _              = error "can't show a non-NF term"
 
+-- | Evaluate a UTLC term using the given strategy.
 eval :: Strategy -> UTLC -> IO UTLC
 eval s = fix $ \rec utlc -> case utlc of
   UApp l x -> do
@@ -84,6 +87,7 @@ eval s = fix $ \rec utlc -> case utlc of
       (\(UTLCThrow e) -> rec (handler e))
   u -> pure u
 
+-- | Evaluate a UTLC term to NF lazily.
 nf :: UTLC -> IO UTLC
 nf (UCon ctor us) = do
     us' <- traverse nf us
