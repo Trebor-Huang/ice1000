@@ -30,7 +30,7 @@ data UTLC where
   UCatch :: (UTLC -> UTLC) :@ "Handler" -> UTLC -> UTLC
 
 instance Show UTLC where
-  show (UCon ctor us) = "(" ++ T.unpack ctor ++ " " ++ unwords (fmap show us) ++ ")"
+  show (UCon ctor us) = "(" ++ unwords (T.unpack ctor : fmap show us) ++ ")"
   show _ = error "can't show a non-NF term"
 
 app :: (UTLC -> IO UTLC) -> Strategy -> UTLC -> UTLC -> IO UTLC
@@ -54,8 +54,10 @@ casing eval strategy x cases = do
       pure (pure x', x')
     Lazy -> pure (whnf x, x)
   case cases of
-    [] -> fail "empty case block reached"
     [(Nothing, body)] -> evalMaybe (body [x'])
+    [] -> do
+      evalX
+      fail "empty case block reached"
     _ -> do
       x'' <- evalX
       let con = case x'' of
